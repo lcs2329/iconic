@@ -1,5 +1,7 @@
 # iconic
 
+![screenshot](https://gitlab.com/lukesturgis/iconic/raw/master/other/screenshot.png)
+
 Change directory icons easily on MacOS, providing an icon directory.
 
 
