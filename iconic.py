@@ -34,8 +34,15 @@ def verify_dir(directory):
     return True
 
 
-def get_subdirectories(directory):
+def get_subdirectories(directory, ignore_hidden=False):
     """Return all child directories in a directory"""
+    if ignore_hidden:
+        return [
+            name 
+            for name in os.listdir(directory)
+            if os.path.isdir(os.path.join(directory, name))
+            and not name.startswith('.')
+        ]
     return [
         name
         for name in os.listdir(directory)
@@ -69,17 +76,29 @@ def change_icon(folder, icon):
                 color["RED"], folder, icon, color["END"]
             )
         )
+        return
+    try:
+        with open(os.path.join(
+            os.path.expanduser("~"),
+            ".cache/iconic/changed"), "a") as cache_file:
+                cache_file.write(folder + "\n")
+    except:
+        print("{}Unable to write '{}' to cache file.".format(color["RED"], folder))
 
 
-def process_directory(directory, icons, recursive):
+def process_directory(directory, icons, recursive, ignore_hidden, blacklist):
     index = 0
-    subdirectories = get_subdirectories(directory)
+    subdirectories = get_subdirectories(directory, ignore_hidden)
     for subdirectory in subdirectories:
         target = os.path.join(directory, subdirectory)
-        change_icon(target, icons[index])
-        index = (index + 1) % len(icons)
+        if target not in blacklist:
+            change_icon(target, icons[index])
+            index = (index + 1) % len(icons)
+            print("Target '{}' is not in blacklist, continuing...".format(target))
+        else:
+            print("Target '{}' is in blacklist, not changing.".format(target))
         if recursive:
-            process_directory(os.path.join(directory, subdirectory), icons, recursive)
+            process_directory(os.path.join(directory, subdirectory), icons, recursive, ignore_hidden, blacklist)
 
 
 if __name__ == "__main__":
@@ -109,13 +128,34 @@ if __name__ == "__main__":
         default=False,
         help="Recurse into subdirectories.",
     )
+    parser.add_argument(
+        "--ignore-hidden",
+        action="store_true",
+        default=False,
+        help="Ignore hidden directories."
+    )
     args = parser.parse_args()
 
     if not verify_dir(args.source) or not verify_dir(args.target):
         parser.print_help()
         exit(1)
 
-    subdirectories = get_subdirectories(args.target)
+    cache_dir = os.path.join(os.path.expanduser("~"), ".cache/iconic")
+    cache_file = os.path.join(cache_dir, "changed")
+
+    if not os.path.exists(cache_dir):
+        os.makedirs(
+            os.path.join(os.path.expanduser("~"), ".cache/iconic")
+        )
+
+    blacklist = []
+    if os.path.exists(cache_file):
+        with open(cache_file, "r") as cache:
+            for directory in cache:
+                blacklist.append(directory.strip("\n"))
+
+
+    subdirectories = get_subdirectories(args.target, args.ignore_hidden)
     if len(subdirectories) == 0:
         print(
             "{}No subdirectories located in '{}'!{}".format(
@@ -133,6 +173,6 @@ if __name__ == "__main__":
         )
         exit(1)
 
-    process_directory(args.target, icons, args.recursive)
+    process_directory(args.target, icons, args.recursive, args.ignore_hidden, blacklist)
 
     print("{}Operation complete!{}".format(color["GREEN"], color["END"]))
