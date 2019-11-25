@@ -1,11 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Change directory icons easily on MacOS, providing an icon directory."""
 
 import argparse
-import Cocoa
-import sys
 import glob
 import os
+import sys
+
+from AppKit import NSImage, NSWorkspace
 
 color = {
     "CYAN": "\033[96m",
@@ -38,10 +39,9 @@ def get_subdirectories(directory, ignore_hidden=False):
     """Return all child directories in a directory"""
     if ignore_hidden:
         return [
-            name 
+            name
             for name in os.listdir(directory)
-            if os.path.isdir(os.path.join(directory, name))
-            and not name.startswith('.')
+            if os.path.isdir(os.path.join(directory, name)) and not name.startswith(".")
         ]
     return [
         name
@@ -53,7 +53,7 @@ def get_subdirectories(directory, ignore_hidden=False):
 def get_icons(directory):
     """Get all of the icons in a directory"""
     return [
-        directory + f
+        os.path.join(directory, f)
         for f in os.listdir(directory)
         if any(f.endswith(ext) for ext in ["jpg", "ico", "png"])
     ]
@@ -66,22 +66,22 @@ def change_icon(folder, icon):
             color["CYAN"], folder, icon, color["END"]
         )
     )
-    try:
-        Cocoa.NSWorkspace.sharedWorkspace().setIcon_forFile_options_(
-            Cocoa.NSImage.alloc().initWithContentsOfFile_(icon), folder, 0
-        )
-    except:
+
+    if not NSWorkspace.sharedWorkspace().setIcon_forFile_options_(
+        NSImage.alloc().initWithContentsOfFile_(icon), folder, 0
+    ):
         print(
             "{}Unable to change folder '{}' to icon '{}'.{}".format(
                 color["RED"], folder, icon, color["END"]
             )
         )
         return
+
     try:
-        with open(os.path.join(
-            os.path.expanduser("~"),
-            ".cache/iconic/changed"), "a") as cache_file:
-                cache_file.write(folder + "\n")
+        with open(
+            os.path.join(os.path.expanduser("~"), ".cache/iconic/changed"), "a"
+        ) as cache_file:
+            cache_file.write(folder + "\n")
     except:
         print("{}Unable to write '{}' to cache file.".format(color["RED"], folder))
 
@@ -89,16 +89,23 @@ def change_icon(folder, icon):
 def process_directory(directory, icons, recursive, ignore_hidden, blacklist):
     index = 0
     subdirectories = get_subdirectories(directory, ignore_hidden)
+
     for subdirectory in subdirectories:
         target = os.path.join(directory, subdirectory)
         if target not in blacklist:
             change_icon(target, icons[index])
             index = (index + 1) % len(icons)
-            print("Target '{}' is not in blacklist, continuing...".format(target))
-        else:
-            print("Target '{}' is in blacklist, not changing.".format(target))
-        if recursive:
-            process_directory(os.path.join(directory, subdirectory), icons, recursive, ignore_hidden, blacklist)
+
+    if recursive:
+        for subdirectory in subdirectories:
+            if subdirectory not in blacklist:
+                process_directory(
+                    os.path.join(directory, subdirectory),
+                    icons,
+                    recursive,
+                    ignore_hidden,
+                    blacklist,
+                )
 
 
 if __name__ == "__main__":
@@ -132,8 +139,15 @@ if __name__ == "__main__":
         "--ignore-hidden",
         action="store_true",
         default=False,
-        help="Ignore hidden directories."
+        help="Ignore hidden directories.",
     )
+    parser.add_argument(
+        "--ignore-cache",
+        action="store_true",
+        default=False,
+        help="Don't blacklist folders from the cache.",
+    )
+    parser.add_argument("--ignore", action="append", help="Ignore certain directories.")
     args = parser.parse_args()
 
     if not verify_dir(args.source) or not verify_dir(args.target):
@@ -144,16 +158,17 @@ if __name__ == "__main__":
     cache_file = os.path.join(cache_dir, "changed")
 
     if not os.path.exists(cache_dir):
-        os.makedirs(
-            os.path.join(os.path.expanduser("~"), ".cache/iconic")
-        )
+        os.makedirs(os.path.join(os.path.expanduser("~"), ".cache/iconic"))
 
     blacklist = []
-    if os.path.exists(cache_file):
-        with open(cache_file, "r") as cache:
-            for directory in cache:
-                blacklist.append(directory.strip("\n"))
+    if not args.ignore_cache:
+        if os.path.exists(cache_file):
+            with open(cache_file, "r") as cache:
+                for directory in cache:
+                    blacklist.append(directory.strip("\n"))
 
+    if args.ignore:
+        blacklist += args.ignore
 
     subdirectories = get_subdirectories(args.target, args.ignore_hidden)
     if len(subdirectories) == 0:
@@ -164,7 +179,7 @@ if __name__ == "__main__":
         )
         exit(1)
 
-    icons = sorted(get_icons(args.source))
+    icons = sorted(get_icons(os.path.abspath(args.source)))
     if len(icons) == 0:
         print(
             "{}No icons located in '{}'!{}".format(
@@ -173,6 +188,12 @@ if __name__ == "__main__":
         )
         exit(1)
 
-    process_directory(args.target, icons, args.recursive, args.ignore_hidden, blacklist)
+    process_directory(
+        os.path.abspath(args.target),
+        icons,
+        args.recursive,
+        args.ignore_hidden,
+        blacklist,
+    )
 
     print("{}Operation complete!{}".format(color["GREEN"], color["END"]))
